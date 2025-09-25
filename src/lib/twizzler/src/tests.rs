@@ -61,3 +61,43 @@ fn test_stable_read() {
         assert_eq!(value, 128);
     }
 }
+
+#[cfg(test)]
+mod tester {
+    use std::time::Instant;
+
+    use twizzler_rt_abi::bindings::{twz_rt_dealloc, twz_rt_get_monotonic_time, twz_rt_malloc};
+
+    //#[bench]
+    #[allow(dead_code)]
+    fn bench_rt_alloc(bench: &mut test::Bencher) {
+        let mut tracker = Vec::with_capacity(100000);
+        bench.iter(|| {
+            let _ret = unsafe { twz_rt_malloc(32, 16, 0) };
+            let ret = core::hint::black_box(_ret);
+            tracker.push(ret);
+        });
+
+        for r in tracker {
+            unsafe { twz_rt_dealloc(r, 32, 16, 0) };
+        }
+    }
+
+    #[bench]
+    fn bench_rt_monotime(bench: &mut test::Bencher) {
+        bench.iter(|| {
+            let _ret = unsafe { twz_rt_get_monotonic_time() };
+            core::hint::black_box(_ret);
+        });
+    }
+
+    #[bench]
+    fn bench1000_instant_now(bench: &mut test::Bencher) {
+        bench.iter(|| {
+            for _ in 0..1000 {
+                let _ret = Instant::now();
+                core::hint::black_box(_ret);
+            }
+        });
+    }
+}

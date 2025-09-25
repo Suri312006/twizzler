@@ -60,14 +60,15 @@ dependencies = [
 
 [[package]]
 name = "ahash"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
+checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
 dependencies = [
  "cfg-if 1.0.0",
+ "getrandom 0.3.1",
  "once_cell",
  "version_check",
- "zerocopy 0.7.35",
+ "zerocopy",
 ]
 
 [[package]]
@@ -237,6 +238,12 @@ dependencies = [
  "bitflags 2.9.0",
  "thiserror 2.0.12",
 ]
+
+[[package]]
+name = "array-macro"
+version = "2.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "220a2c618ab466efe41d0eace94dfeff1c35e3aa47891bdb95e1c0fefffd3c99"
 
 [[package]]
 name = "arraydeque"
@@ -567,20 +574,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8894febbff9f758034a5b8e12d87918f56dfc64a8e1fe757d65e29041538d93"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "blocking"
-version = "1.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e83f8d02be6967315521be875afa792a316e28d57b5a2d401897e2a7921b7f21"
-dependencies = [
- "async-channel",
- "async-task",
- "futures-io",
- "futures-lite",
- "piper",
- "tracing",
 ]
 
 [[package]]
@@ -1684,9 +1677,11 @@ dependencies = [
  "miette",
  "petgraph",
  "secgate",
+ "smallstr",
  "stable-vec",
  "talc",
  "thiserror 2.0.12",
+ "tinyvec",
  "tracing",
  "twizzler-abi",
  "twizzler-rt-abi",
@@ -1954,6 +1949,13 @@ name = "fdt"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "784a4df722dc6267a04af36895398f59d21d07dce47232adf31ec0ff2fa45e67"
+
+[[package]]
+name = "ferroc"
+version = "1.0.0-pre.4-twz"
+dependencies = [
+ "array-macro",
+]
 
 [[package]]
 name = "ff"
@@ -3199,6 +3201,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "heapless"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1edcd5a338e64688fbdcb7531a846cfd3476a54784dcb918a0844682bc7ada5"
+dependencies = [
+ "hash32",
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "heapsize-derive"
 version = "0.1.0"
 source = "git+https://github.com/twizzler-operating-system/obliviate.git?branch=nonstatic_lifetime_support#b02c4e35ff9c3ac6f2bebfbb30a4994248a8d173"
@@ -4172,6 +4184,9 @@ dependencies = [
 [[package]]
 name = "lwext4-rs"
 version = "0.1.0"
+dependencies = [
+ "twizzler-abi",
+]
 
 [[package]]
 name = "managed"
@@ -4207,6 +4222,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.100",
+]
+
+[[package]]
+name = "mayheap"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acbc2f58104ec9b149972c3b4108ece000cdad4f6df7c2e691fea572aadeba62"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -4346,8 +4370,10 @@ dependencies = [
  "naming-core",
  "parking_lot",
  "secgate",
+ "smallstr",
  "static_assertions",
  "talc",
+ "tinyvec",
  "tracing",
  "tracing-subscriber",
  "twizzler-abi",
@@ -4697,20 +4723,22 @@ dependencies = [
 name = "object-store"
 version = "0.1.0"
 dependencies = [
- "async-trait",
+ "async-executor",
+ "async-io",
  "chacha20",
  "efs",
  "fatfs 0.4.0",
+ "futures",
  "intervaltree",
  "lru 0.13.0",
  "lwext4-rs",
+ "mayheap",
  "obliviate-core",
  "rand 0.8.5",
  "tracing",
  "tracing-subscriber",
  "twizzler",
  "twizzler-abi",
- "volatile",
 ]
 
 [[package]]
@@ -4965,17 +4993,19 @@ dependencies = [
 name = "pager-srv"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "async-condvar-fair",
  "async-executor",
  "async-io",
  "async-lock",
  "async-trait",
  "bitvec",
- "blocking",
  "colored 3.0.0",
  "devmgr",
  "futures",
+ "heapless 0.9.1",
  "itertools 0.14.0",
+ "mayheap",
  "miette",
  "nvme",
  "object-store",
@@ -5228,17 +5258,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
-name = "piper"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96c8c490f422ef9a4efd2cb5b42b76c8613d7e7dfc1caf667b8a3350a5acc066"
-dependencies = [
- "atomic-waker",
- "fastrand",
- "futures-io",
-]
-
-[[package]]
 name = "pkcs8"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5298,7 +5317,7 @@ version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
- "zerocopy 0.8.24",
+ "zerocopy",
 ]
 
 [[package]]
@@ -5363,6 +5382,7 @@ dependencies = [
  "libc",
  "miette",
  "naming",
+ "rand 0.8.5",
  "tracing",
  "tracing-subscriber",
  "twizzler",
@@ -5417,7 +5437,7 @@ checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
- "zerocopy 0.8.24",
+ "zerocopy",
 ]
 
 [[package]]
@@ -6176,6 +6196,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "smallstr"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "862077b1e764f04c251fe82a2ef562fd78d7cadaeb072ca7c2bcaf7217b1ff3b"
+dependencies = [
+ "smallvec",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6241,6 +6270,13 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "st"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.5",
 ]
 
 [[package]]
@@ -6521,6 +6557,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "tick_counter"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37f1310986d0aa940019cbb2b480161c60a614dba076cbb20e82bfbc236bbabd"
+
+[[package]]
 name = "time"
 version = "0.3.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6798,8 +6840,12 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "twizzler"
 version = "0.99.0"
 dependencies = [
+ "ahash",
  "bitflags 2.9.0",
+ "equivalent",
  "monitor-api",
+ "rand 0.9.0",
+ "rand_chacha 0.9.0",
  "secgate",
  "thiserror 2.0.12",
  "tracing",
@@ -6865,12 +6911,14 @@ dependencies = [
  "arm-gic",
  "backtracer_core",
  "bitflags 2.9.0",
+ "bitset-core",
  "chacha20",
  "digest",
  "fdt",
- "fixedbitset",
+ "heapless 0.9.1",
  "hex-literal",
  "intrusive-collections",
+ "itertools 0.9.0",
  "limine",
  "linked_list_allocator",
  "log",
@@ -6969,7 +7017,7 @@ dependencies = [
  "bitflags 2.9.0",
  "blake3",
  "getrandom 0.2.16",
- "heapless",
+ "heapless 0.8.0",
  "log",
  "p256",
  "sha2",
@@ -6994,6 +7042,7 @@ dependencies = [
  "bitflags 2.9.0",
  "dynlink",
  "elf",
+ "ferroc",
  "lazy_static",
  "lru 0.13.0",
  "monitor-api",
@@ -7006,6 +7055,7 @@ dependencies = [
  "static_assertions",
  "talc",
  "thiserror 2.0.12",
+ "tick_counter",
  "tracing",
  "tracing-subscriber",
  "twizzler-abi",
@@ -8330,31 +8380,11 @@ checksum = "2fe21bcc34ca7fe6dd56cc2cb1261ea59d6b93620215aefb5ea6032265527784"
 
 [[package]]
 name = "zerocopy"
-version = "0.7.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
-dependencies = [
- "zerocopy-derive 0.7.35",
-]
-
-[[package]]
-name = "zerocopy"
 version = "0.8.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2586fea28e186957ef732a5f8b3be2da217d65c5969d4b1e17f973ebbe876879"
 dependencies = [
- "zerocopy-derive 0.8.24",
-]
-
-[[package]]
-name = "zerocopy-derive"
-version = "0.7.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.100",
+ "zerocopy-derive",
 ]
 
 [[package]]
@@ -8420,17 +8450,17 @@ dependencies = [
 [[patch.unused]]
 name = "candle-core"
 version = "0.9.1"
-source = "git+https://github.com/dbittman/candle.git?branch=dbittman#7cb2af4976752958169e64ed1a0bad1bb9ab2c62"
+source = "git+https://github.com/dbittman/candle.git?branch=dbittman#605110740a3477a9e5f016821c512887f753c950"
 
 [[patch.unused]]
 name = "candle-nn"
 version = "0.9.1"
-source = "git+https://github.com/dbittman/candle.git?branch=dbittman#7cb2af4976752958169e64ed1a0bad1bb9ab2c62"
+source = "git+https://github.com/dbittman/candle.git?branch=dbittman#605110740a3477a9e5f016821c512887f753c950"
 
 [[patch.unused]]
 name = "candle-transformers"
 version = "0.9.1"
-source = "git+https://github.com/dbittman/candle.git?branch=dbittman#7cb2af4976752958169e64ed1a0bad1bb9ab2c62"
+source = "git+https://github.com/dbittman/candle.git?branch=dbittman#605110740a3477a9e5f016821c512887f753c950"
 
 [[patch.unused]]
 name = "gemm-common"

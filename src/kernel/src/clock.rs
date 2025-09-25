@@ -1,16 +1,17 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use log::{debug, warn};
 use twizzler_abi::syscall::{Clock, ClockID, ClockInfo, ClockKind, FemtoSeconds};
 use twizzler_rt_abi::{error::ArgumentError, Result};
-
-use log::debug; 
-use log::warn;
 
 use crate::{
     condvar::CondVar,
     once::Once,
-    processor::current_processor,
+    processor::{
+        mp::current_processor,
+        sched::{schedule_hardtick, schedule_stattick},
+    },
     spinlock::Spinlock,
     syscall::sync::requeue_all,
     thread::{priority::Priority, ThreadRef},
@@ -28,7 +29,7 @@ impl From<Ticks> for Nanoseconds {
 }
 
 pub fn statclock(dt: Nanoseconds) {
-    crate::sched::schedule_stattick(dt);
+    schedule_stattick(dt);
 }
 
 const NR_WINDOWS: usize = 1024;
@@ -78,13 +79,14 @@ impl TimeoutEntry {
     }
 }
 
+const NR_WINDOW_ENTRIES: usize = 32;
 #[derive(Debug)]
 struct TimeoutQueue {
-    queues: [Vec<TimeoutEntry>; NR_WINDOWS],
+    queues: [heapless::Vec<TimeoutEntry, NR_WINDOW_ENTRIES>; NR_WINDOWS],
     current: usize,
     next_wake: usize,
     soft_current: usize,
-    keys: Vec<usize>,
+    keys: heapless::Vec<usize, { NR_WINDOW_ENTRIES * NR_WINDOWS }>,
     next_key: usize,
 }
 
@@ -99,27 +101,19 @@ impl TimeoutKey {
     /// hasn't fired).
     pub fn release(self) -> bool {
         let did_remove = TIMEOUT_QUEUE.lock().remove(&self);
-        // Our destructor just calls remove, above, so skip it when doing this manual release.
-        core::mem::forget(self);
         did_remove
-    }
-}
-
-impl Drop for TimeoutKey {
-    fn drop(&mut self) {
-        TIMEOUT_QUEUE.lock().remove(self);
     }
 }
 
 impl TimeoutQueue {
     const fn new() -> Self {
-        const INIT: Vec<TimeoutEntry> = Vec::new();
+        const INIT: heapless::Vec<TimeoutEntry, NR_WINDOW_ENTRIES> = heapless::Vec::new();
         Self {
             queues: [INIT; NR_WINDOWS],
             current: 0,
             next_wake: 0,
             soft_current: 0,
-            keys: Vec::new(),
+            keys: heapless::Vec::new(),
             next_key: 0,
         }
     }
@@ -138,7 +132,9 @@ impl TimeoutQueue {
         if key == self.next_key {
             self.next_key -= 1;
         } else {
-            self.keys.push(key);
+            if self.keys.push(key).is_err() {
+                log::warn!("leaking timeout key {}", key);
+            }
         }
     }
 
@@ -177,7 +173,10 @@ impl TimeoutQueue {
             expire_ticks: expire_ticks as u64,
             key,
         };
-        self.queues[window].push(entry);
+        if let Err(entry) = self.queues[window].push(entry) {
+            log::warn!("timeout queue overflow");
+            entry.call();
+        }
         if expire_ticks < self.next_wake {
             // TODO: #41 signal CPU to wake up early.
         }
@@ -187,7 +186,12 @@ impl TimeoutQueue {
     // Remove a timeout key. Returns true if the key was actually removed (timeout hasn't fired).
     fn remove(&mut self, key: &TimeoutKey) -> bool {
         let old_len = self.queues[key.window].len();
-        for _ in self.queues[key.window].extract_if(.., |entry| entry.key == key.key) {}
+        while let Some(pos) = self.queues[key.window]
+            .iter()
+            .position(|entry| entry.key == key.key)
+        {
+            self.queues[key.window].swap_remove(pos);
+        }
         self.release_key(key.key);
         // Did we remove anything?
         old_len != self.queues[key.window].len()
@@ -309,16 +313,17 @@ pub fn oneshot_clock_hardtick() {
         None
     };
 
-    let sched_next_tick = crate::sched::schedule_hardtick();
-    /*
-    logln!(
+    let mut sched_next_tick = schedule_hardtick();
+    if current_processor().is_bsp() {
+        sched_next_tick = Some(1);
+    }
+    log::trace!(
         "hardtick {} {} {:?} {:?}",
         current_processor().id,
         ticks,
         sched_next_tick,
         to_next_tick
     );
-    */
     let next = core::cmp::min(
         to_next_tick.unwrap_or(u64::MAX),
         sched_next_tick.unwrap_or(u64::MAX),
@@ -409,7 +414,12 @@ pub fn fill_with_every_first(slice: &mut [Clock], start: u64) -> Result<usize> {
         // check that we don't go out of slice bounds
         if clocks_added < slice.len() {
             // does this allocate new kernel memory?
-            let info = { TICK_SOURCES.lock()[clock_list.first().unwrap().0 as usize].info() };
+            let info = {
+                TICK_SOURCES.lock()[clock_list.first().as_ref().unwrap().0 as usize]
+                    .as_ref()
+                    .unwrap()
+                    .info()
+            };
             slice[clocks_added].set(
                 // each semantic clock will have at least one element
                 info,
@@ -439,7 +449,7 @@ pub fn fill_with_kind(slice: &mut [Clock], clock: ClockKind, start: u64) -> Resu
     for id in &clock_list[start as usize..] {
         // check that we don't go out of slice bounds
         if clocks_added < slice.len() {
-            let info = { TICK_SOURCES.lock()[id.0 as usize].info() };
+            let info = { TICK_SOURCES.lock()[id.0 as usize].as_ref().unwrap().info() };
             slice[clocks_added].set(info, *id, clock);
             clocks_added += 1;
         } else {
@@ -458,7 +468,7 @@ pub fn fill_with_first_kind(slice: &mut [Clock], clock: ClockKind) -> Result<usi
     // check that we don't go out of slice bounds
     if slice.len() >= 1 {
         let id = clock_list.first().unwrap();
-        let info = { TICK_SOURCES.lock()[id.0 as usize].info() };
+        let info = { TICK_SOURCES.lock()[id.0 as usize].as_ref().unwrap().info() };
         slice[0].set(info, *id, clock);
         return Ok(clocks_added);
     } else {
@@ -471,6 +481,6 @@ pub fn init() {
     materialize_sw_clocks();
     crate::arch::start_clock(127, statclock);
     TIMEOUT_THREAD.call_once(|| {
-        crate::thread::entry::start_new_kernel(Priority::REALTIME, soft_timeout_clock, 0)
+        crate::thread::entry::start_new_kernel(Priority::INTERRUPT, soft_timeout_clock, 0)
     });
 }

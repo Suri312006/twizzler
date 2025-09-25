@@ -6,6 +6,8 @@
 #![feature(core_intrinsics)]
 #![feature(arbitrary_self_types)]
 #![feature(backtrace_frames)]
+#![feature(ptr_as_ref_unchecked)]
+#![feature(test)]
 
 // This is required so we can use our derive macros in this crate.
 extern crate self as twizzler;
@@ -26,6 +28,9 @@ pub mod error {
 pub use twizzler_rt_abi::Result;
 
 //mod pager;
+
+#[cfg(test)]
+extern crate test;
 
 #[cfg(test)]
 mod tests;

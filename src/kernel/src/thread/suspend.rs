@@ -11,9 +11,12 @@ use super::{
 use crate::{
     interrupt::Destination,
     once::Once,
-    processor::ipi_exec,
-    sched::{schedule, schedule_resched, schedule_thread},
+    processor::{
+        ipi::ipi_exec,
+        sched::{schedule, schedule_resched, SchedFlags},
+    },
     spinlock::Spinlock,
+    syscall::sync::{add_to_requeue, requeue_all},
     thread::current_thread_ref,
 };
 
@@ -39,7 +42,7 @@ impl Thread {
     /// of this call.
     pub fn suspend(self: &ThreadRef) {
         self.flags.fetch_or(THREAD_MUST_SUSPEND, Ordering::SeqCst);
-        if self == &current_thread_ref().unwrap() {
+        if self == current_thread_ref().unwrap() {
             if !self.is_critical() {
                 crate::interrupt::with_disabled(|| {
                     self.maybe_suspend_self();
@@ -76,7 +79,7 @@ impl Thread {
         }
 
         // goodnight!
-        schedule(false);
+        schedule(SchedFlags::PREEMPT);
         self.set_state(ExecutionState::Running);
 
         // goodmorning! Clear the flags. This is one operation, so we'll never observe
@@ -93,7 +96,10 @@ impl Thread {
         let mut suspended_threads = suspended_threads().lock();
         if suspended_threads.find_mut(&self.objid()).remove().is_some() {
             // Just throw it on a queue, it'll cleanup its own flag mess.
-            schedule_thread(self.clone());
+            self.set_sync_sleep_done();
+            add_to_requeue(self.clone());
+            drop(suspended_threads);
+            requeue_all();
             true
         } else {
             false

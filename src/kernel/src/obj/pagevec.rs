@@ -6,8 +6,12 @@ use nonoverlapping_interval_tree::NonOverlappingIntervalTree;
 use super::{
     pages::{Page, PageRef},
     range::PageRange,
+    PageNumber,
 };
-use crate::{memory::tracker::FrameAllocator, mutex::Mutex};
+use crate::{
+    memory::{pagetables::MappingSettings, tracker::FrameAllocator},
+    mutex::Mutex,
+};
 
 #[derive(Debug)]
 pub struct PageVec {
@@ -35,6 +39,20 @@ impl PageVec {
 
     pub fn len(&self) -> usize {
         self.tree.len()
+    }
+
+    pub fn estimate_memory_usage(&self) -> (usize, usize) {
+        let mut private_mem = 0;
+        let mut shared_mem = 0;
+        for r in self.tree.range(0..usize::MAX) {
+            let page_ref = r.1.value();
+            if page_ref.ref_count() > 1 {
+                shared_mem += page_ref.nr_pages() * PageNumber::PAGE_SIZE;
+            } else {
+                private_mem += page_ref.nr_pages() * PageNumber::PAGE_SIZE;
+            }
+        }
+        (private_mem, shared_mem)
     }
 
     /// Remove the first pages up to offset, and then truncate the vector to the given page count.
@@ -99,7 +117,7 @@ impl PageVec {
             let thisrange = (*k)..(*entry.end());
             // TODO: use larger pages
             for i in 0..entry.nr_pages() {
-                let new_page = Arc::new(Page::new(allocator.try_allocate()?));
+                let new_page = Arc::new(Page::new(allocator.try_allocate()?, 1));
                 let mut new_page = PageRef::new(new_page, 0, 1);
                 new_page.copy_from(&entry.adjust(i));
                 pv.tree.insert(thisrange.clone(), new_page);
@@ -113,6 +131,27 @@ impl PageVec {
         let mut entry = self.tree.range(pn..(pn + 1));
         let entry = entry.next()?;
         Some(entry.1.adjust(pn - *entry.0))
+    }
+
+    pub fn pages<const MAX: usize>(
+        &self,
+        pn: usize,
+        pages: &mut heapless::Vec<(PageRef, MappingSettings), MAX>,
+        settings: MappingSettings,
+    ) {
+        let entry = self.tree.range(pn..(pn + pages.capacity()));
+
+        let mut start = pn;
+        for entry in entry {
+            if *entry.0 == start && !pages.is_full() {
+                unsafe {
+                    pages.push_unchecked((entry.1.value().clone(), settings));
+                }
+                start += entry.1.value().nr_pages();
+            } else {
+                break;
+            }
+        }
     }
 
     pub fn add_page(&mut self, off: usize, page: PageRef) -> PageRef {
@@ -135,7 +174,7 @@ mod tests {
 
     fn new_page() -> PageRef {
         PageRef::new(
-            Arc::new(Page::new(alloc_frame(FrameAllocFlags::empty()))),
+            Arc::new(Page::new(alloc_frame(FrameAllocFlags::empty()), 1)),
             0,
             1,
         )

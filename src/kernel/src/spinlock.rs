@@ -2,10 +2,13 @@ use core::{
     cell::UnsafeCell,
     marker::PhantomData,
     panic::Location,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicPtr, AtomicU64, Ordering},
 };
 
-use crate::processor::spin_wait_until;
+use crate::processor::{
+    sched::{schedule, SchedFlags},
+    spin_wait_until,
+};
 
 pub trait RelaxStrategy {
     fn relax(iters: usize);
@@ -16,7 +19,7 @@ impl RelaxStrategy for Reschedule {
     #[inline]
     fn relax(iters: usize) {
         if iters > 100 {
-            crate::sched::schedule(true);
+            schedule(SchedFlags::YIELD | SchedFlags::PREEMPT | SchedFlags::REINSERT);
         }
     }
 }
@@ -32,7 +35,7 @@ pub struct GenericSpinlock<T, Relax: RelaxStrategy> {
     next_ticket: AlignedAtomicU64,
     current: AlignedAtomicU64,
     cell: UnsafeCell<T>,
-    locked_from: UnsafeCell<Option<Location<'static>>>,
+    locked_from: AtomicPtr<Location<'static>>,
     _pd: PhantomData<Relax>,
 }
 
@@ -45,7 +48,7 @@ impl<T, Relax: RelaxStrategy> GenericSpinlock<T, Relax> {
             next_ticket: AlignedAtomicU64(AtomicU64::new(0)),
             current: AlignedAtomicU64(AtomicU64::new(0)),
             cell: UnsafeCell::new(data),
-            locked_from: UnsafeCell::new(None),
+            locked_from: AtomicPtr::new(core::ptr::null_mut()),
             _pd: PhantomData,
         }
     }
@@ -68,25 +71,33 @@ impl<T, Relax: RelaxStrategy> GenericSpinlock<T, Relax> {
             || {
                 iters += 1;
                 if iters == 10000 {
-                    log::debug!("spinlock pause: {}", caller);
+                    //emerglogln!("spinlock pause: {}", caller);
                 }
                 if iters == 100000 {
-                    log::warn!("spinlock long pause: {}", caller);
+                    let locked_from = unsafe { self.locked_from.load(Ordering::SeqCst).as_ref() };
+                    emerglogln!(
+                        "spinlock long pause: {}, locked at {:?}",
+                        caller,
+                        locked_from
+                    );
                 }
                 Relax::relax(iters);
             },
         );
-        unsafe { *self.locked_from.get().as_mut().unwrap() = Some(caller) };
+        self.locked_from.store(
+            core::panic::Location::caller() as *const _ as *mut _,
+            Ordering::SeqCst,
+        );
         LockGuard {
             lock: self,
             interrupt_state,
             dont_unlock_on_drop: false,
+            locker: core::panic::Location::caller(),
         }
     }
 
     fn release(&self) {
         let next = self.current.0.load(Ordering::Relaxed) + 1;
-        unsafe { *self.locked_from.get().as_mut().unwrap() = None };
         self.current.0.store(next, Ordering::Release);
     }
 }
@@ -95,6 +106,7 @@ pub struct LockGuard<'a, T, Relax: RelaxStrategy> {
     lock: &'a GenericSpinlock<T, Relax>,
     interrupt_state: bool,
     dont_unlock_on_drop: bool,
+    pub locker: &'static core::panic::Location<'static>,
 }
 
 pub type SpinLockGuard<'a, T> = LockGuard<'a, T, SpinLoop>;

@@ -222,6 +222,12 @@ impl PhysRange {
         let last_page = self.end / NULLPAGE_SIZE as u64;
         first_page..last_page
     }
+
+    pub fn page_count(&self) -> usize {
+        let first_page = self.start / NULLPAGE_SIZE as u64;
+        let last_page = self.end / NULLPAGE_SIZE as u64;
+        (last_page - first_page) as usize
+    }
 }
 
 impl core::ops::Add<u64> for PhysRange {
@@ -250,6 +256,12 @@ impl ObjectRange {
         let last_page = self.end / NULLPAGE_SIZE as u64;
         first_page..last_page
     }
+
+    pub fn page_count(&self) -> usize {
+        let first_page = self.start / NULLPAGE_SIZE as u64;
+        let last_page = self.end / NULLPAGE_SIZE as u64;
+        (last_page - first_page) as usize
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
@@ -259,6 +271,7 @@ pub struct ObjectEvictInfo {
     pub phys: PhysRange,
     pub version: u64,
     pub flags: ObjectEvictFlags,
+    pub uniq_id: ObjID,
 }
 
 impl ObjectEvictInfo {
@@ -268,8 +281,10 @@ impl ObjectEvictInfo {
         phys: PhysRange,
         version: u64,
         flags: ObjectEvictFlags,
+        uniq_id: ObjID,
     ) -> Self {
         Self {
+            uniq_id,
             obj_id,
             range,
             phys,

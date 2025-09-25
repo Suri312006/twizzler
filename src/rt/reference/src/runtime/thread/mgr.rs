@@ -1,6 +1,9 @@
 //! Thread management routines, including spawn and join.
 
-use std::{alloc::Layout, collections::BTreeMap};
+use std::{
+    alloc::{GlobalAlloc, Layout},
+    collections::BTreeMap,
+};
 
 use monitor_api::RuntimeThreadControl;
 use tracing::trace;
@@ -168,7 +171,6 @@ impl ReferenceRuntime {
             .unwrap();
         let stack_raw = unsafe {
             OUR_RUNTIME
-                .default_allocator()
                 .alloc_zeroed(Layout::from_size_align(args.stack_size, MIN_STACK_ALIGN).unwrap())
         } as usize;
 
@@ -226,7 +228,6 @@ impl ReferenceRuntime {
     }
 
     pub(super) fn impl_join(&self, id: u32, timeout: Option<std::time::Duration>) -> Result<()> {
-        trace!("joining on thread {} with timeout {:?}", id, timeout);
         let repr = {
             let mut inner = THREAD_MGR.inner.lock();
             inner.scan_for_exited_except(id);
@@ -247,7 +248,6 @@ impl ReferenceRuntime {
                 let mut inner = THREAD_MGR.inner.lock();
                 inner.prep_cleanup(id);
                 inner.do_thread_gc();
-                trace!("join {} completed", id);
                 return Ok(());
             }
         }
