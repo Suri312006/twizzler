@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   check-tag:
-    runs-on: self-hosted
+    # runs-on: self-hosted
+    runs-on: mac-os
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       should-release: ${{ steps.tag_check.outputs.should-release }}
